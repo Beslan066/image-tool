@@ -40,21 +40,18 @@ class PaymentController extends Controller
         $plan = $plans[$request->plan];
         $amount = $plan['price'];
 
-        // Убираем старую логику с app()->environment('local')
-        // Вместо этого, просто проверяем, что сервис ЮKassa инициализирован.
+        // Убираем мгновенную активацию для local!
+        // Теперь даже на local будет настоящий тестовый платеж через ЮKassa
+
         if (!$this->yookassa) {
             Log::error('YooKassa service not initialized');
             return back()->with('error', 'Платежная система временно недоступна. Попробуйте позже.');
         }
 
-        // Для production - реальная оплата через ЮKassa
         try {
             $returnUrl = $request->input('redirect', route('payment.success'));
-
-            // 1. Создаем платеж в ЮKassa через наш сервис
             $payment = $this->yookassa->createPayment($user, $request->plan, $returnUrl);
 
-            // 2. Сохраняем информацию о pending-платеже в БД
             Subscription::create([
                 'user_id' => $user->id,
                 'payment_id' => $payment['payment_id'],
@@ -64,8 +61,12 @@ class PaymentController extends Controller
                 'expires_at' => now()->addHour(),
             ]);
 
-            // 3. Перенаправляем пользователя на платежную страницу ЮKassa
-            //    (где он сможет ввести тестовую карту 5555 5555 5555 4477 [citation:5][citation:9])
+            Log::info('Redirecting to YooKassa payment page', [
+                'confirmation_url' => $payment['confirmation_url'],
+                'payment_id' => $payment['payment_id']
+            ]);
+
+            // Перенаправляем на платежную страницу ЮKassa
             return redirect($payment['confirmation_url']);
 
         } catch (\Exception $e) {
@@ -90,10 +91,6 @@ class PaymentController extends Controller
     {
         Log::info('YooKassa webhook received', $request->all());
 
-        if (app()->environment('local')) {
-            return response()->json(['ok' => true]);
-        }
-
         if (!$this->yookassa) {
             Log::error('YooKassa service not initialized for webhook');
             return response()->json(['error' => 'Service unavailable'], 500);
@@ -101,11 +98,14 @@ class PaymentController extends Controller
 
         try {
             $payload = $request->all();
-            $result = $this->yookassa->handleWebhook($payload);
+            $event = $payload['event'] ?? null;
 
-            if ($result['success']) {
-                DB::transaction(function () use ($result) {
-                    $subscription = Subscription::where('payment_id', $result['payment_id'])->first();
+            if ($event === 'payment.succeeded') {
+                $paymentId = $payload['object']['id'];
+                $metadata = $payload['object']['metadata'];
+
+                DB::transaction(function () use ($paymentId, $metadata) {
+                    $subscription = Subscription::where('payment_id', $paymentId)->first();
 
                     if ($subscription && $subscription->status !== 'paid') {
                         $subscription->update([
@@ -113,9 +113,9 @@ class PaymentController extends Controller
                             'paid_at' => now(),
                         ]);
 
-                        $user = User::find($result['user_id']);
+                        $user = User::find($metadata['user_id'] ?? $subscription->user_id);
                         if ($user) {
-                            $months = $result['plan'] === 'yearly' ? 12 : 1;
+                            $months = ($metadata['plan'] ?? $subscription->plan) === 'yearly' ? 12 : 1;
                             $user->activatePremium($months);
                         }
                     }
