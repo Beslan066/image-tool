@@ -16,12 +16,13 @@ class YooKassaService
         $this->isAvailable = false;
 
         try {
+            // Используем config(), а не env()!
             $shopId = config('services.yookassa.shop_id');
             $secretKey = config('services.yookassa.secret_key');
 
             Log::info('YooKassa init', [
-                'shop_id' => $shopId ? 'set' : 'empty',
-                'secret_key' => $secretKey ? 'set' : 'empty'
+                'shop_id' => $shopId,
+                'secret_key_length' => $secretKey ? strlen($secretKey) : 0
             ]);
 
             if ($shopId && $secretKey) {
@@ -79,6 +80,14 @@ class YooKassaService
             'payment_id' => $payment->getId(),
             'confirmation_url' => $payment->getConfirmation()->getConfirmationUrl(),
         ];
+    }
+
+    public function getPaymentInfo($paymentId)
+    {
+        if (!$this->isAvailable) {
+            throw new \Exception('YooKassa service not available');
+        }
+        return $this->client->getPaymentInfo($paymentId);
     }
 
     public function handleWebhook($payload)
