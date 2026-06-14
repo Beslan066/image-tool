@@ -656,6 +656,8 @@
             init() {
                 this.initTheme();
                 this.checkPremium();
+                // Запускаем проверку статуса платежа при загрузке
+                this.startPaymentCheck();
             },
 
             initTheme() {
@@ -698,63 +700,43 @@
                 }
             },
 
-            upgradeToPremium() {
-                // Создаем форму для POST запроса
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = '/checkout';
-                form.style.display = 'none';
-
-                const csrfInput = document.createElement('input');
-                csrfInput.type = 'hidden';
-                csrfInput.name = '_token';
-                csrfInput.value = document.querySelector('meta[name="csrf-token"]').content;
-                form.appendChild(csrfInput);
-
-                const planInput = document.createElement('input');
-                planInput.type = 'hidden';
-                planInput.name = 'plan';
-                planInput.value = 'premium';
-                form.appendChild(planInput);
-
-                const redirectInput = document.createElement('input');
-                redirectInput.type = 'hidden';
-                redirectInput.name = 'redirect';
-                redirectInput.value = window.location.href;
-                form.appendChild(redirectInput);
-
-                document.body.appendChild(form);
-                form.submit();
-
-                // Запускаем проверку статуса платежа
-                this.startPaymentCheck();
-            },
-
             startPaymentCheck() {
                 if (this.checkPaymentInterval) {
                     clearInterval(this.checkPaymentInterval);
                 }
 
-                this.checkPaymentInterval = setInterval(async () => {
-                    try {
-                        const response = await fetch('/check-payment-status', {
-                            headers: {
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                                'Accept': 'application/json'
-                            }
-                        });
-                        const data = await response.json();
+                // Немедленная проверка
+                this.checkPaymentStatus();
 
-                        if (data.is_premium) {
+                // Периодическая проверка каждые 5 секунд
+                this.checkPaymentInterval = setInterval(() => {
+                    this.checkPaymentStatus();
+                }, 5000);
+            },
+
+            async checkPaymentStatus() {
+                try {
+                    const response = await fetch('/check-payment-status', {
+                        headers: {
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'Accept': 'application/json'
+                        }
+                    });
+                    const data = await response.json();
+
+                    console.log('Payment status check:', data);
+
+                    if (data.is_premium) {
+                        if (this.checkPaymentInterval) {
                             clearInterval(this.checkPaymentInterval);
                             this.checkPaymentInterval = null;
-                            this.isPremium = true;
-                            location.reload();
                         }
-                    } catch (error) {
-                        console.error('Check payment status error:', error);
+                        this.isPremium = true;
+                        setTimeout(() => location.reload(), 500);
                     }
-                }, 3000);
+                } catch (error) {
+                    console.error('Check payment status error:', error);
+                }
             },
 
             setBatchMode(mode) {

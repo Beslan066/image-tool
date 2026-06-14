@@ -48,6 +48,35 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/payment/success', [PaymentController::class, 'success'])->name('payment.success');
     Route::get('/payment/cancel', [PaymentController::class, 'cancel'])->name('payment.cancel');
     Route::get('/check-payment-status', [PaymentController::class, 'checkPaymentStatus']);
+    // Временный публичный маршрут для активации после оплаты
+    Route::get('/activate-payment/{paymentId}', function ($paymentId) {
+        $subscription = \App\Models\Subscription::where('payment_id', $paymentId)->first();
+
+        if (!$subscription) {
+            return redirect('/converter')->with('error', 'Платеж не найден');
+        }
+
+        $user = \App\Models\User::find($subscription->user_id);
+
+        if ($user) {
+            $user->is_premium = true;
+            $months = $subscription->plan === 'yearly' ? 12 : 1;
+            $user->premium_until = now()->addMonths($months);
+            $user->save();
+
+            $subscription->update([
+                'status' => 'paid',
+                'paid_at' => now(),
+            ]);
+
+            // Авторизуем пользователя
+            auth()->login($user);
+
+            return redirect('/converter')->with('success', 'Premium подписка активирована!');
+        }
+
+        return redirect('/converter')->with('error', 'Не удалось активировать подписку');
+    })->name('activate.payment');
 });
 
 // Вебхук (без авторизации)

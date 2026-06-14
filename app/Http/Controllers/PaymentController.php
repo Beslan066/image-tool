@@ -57,8 +57,11 @@ class PaymentController extends Controller
         }
 
         try {
-            $returnUrl = $request->input('redirect', route('payment.success'));
+            $returnUrl = $request->input('redirect', route('converter'));
             $payment = $this->yookassa->createPayment($user, $request->plan, $returnUrl);
+
+            // Сохраняем payment_id в сессию для отслеживания
+            session(['last_payment_id' => $payment['payment_id']]);
 
             Subscription::create([
                 'user_id' => $user->id,
@@ -69,14 +72,7 @@ class PaymentController extends Controller
                 'expires_at' => now()->addHour(),
             ]);
 
-            Log::info('Redirecting to YooKassa payment page', [
-                'confirmation_url' => $payment['confirmation_url'],
-                'payment_id' => $payment['payment_id']
-            ]);
-
-            // Перенаправляем на платежную страницу ЮKassa
             return redirect($payment['confirmation_url']);
-
         } catch (\Exception $e) {
             Log::error('Payment creation error: ' . $e->getMessage());
             return back()->with('error', 'Ошибка при создании платежа: ' . $e->getMessage());
@@ -185,32 +181,42 @@ class PaymentController extends Controller
     {
         $user = $request->user();
 
+        Log::info('=== CHECK PAYMENT STATUS ===', [
+            'user_id' => $user?->id,
+            'session_payment_id' => session('last_payment_id')
+        ]);
+
         if (!$user) {
-            return response()->json(['success' => false, 'message' => 'User not authenticated']);
+            return response()->json(['success' => false, 'is_premium' => false]);
         }
 
-        // Ищем последний платеж пользователя
+        // Проверяем активный премиум
+        if ($user->is_premium && $user->premium_until && $user->premium_until->isFuture()) {
+            return response()->json(['success' => true, 'is_premium' => true]);
+        }
+
+        // Ищем последний pending платеж
         $subscription = Subscription::where('user_id', $user->id)
             ->where('status', 'pending')
             ->orderBy('id', 'desc')
             ->first();
 
         if (!$subscription) {
-            return response()->json([
-                'success' => false,
-                'is_premium' => $user->isPremiumActive(),
-                'message' => 'No pending subscription'
-            ]);
+            return response()->json(['success' => false, 'is_premium' => false]);
         }
 
-        // Проверяем статус через ЮKassa API
+        // Проверяем статус через API ЮKassa
         if ($this->yookassa && $this->yookassa->isAvailable()) {
             try {
                 $paymentInfo = $this->yookassa->getPaymentInfo($subscription->payment_id);
                 $status = $paymentInfo->getStatus();
 
+                Log::info('Payment status from API', [
+                    'payment_id' => $subscription->payment_id,
+                    'status' => $status
+                ]);
+
                 if ($status === 'succeeded') {
-                    // Активируем премиум
                     $user->is_premium = true;
                     $months = $subscription->plan === 'yearly' ? 12 : 1;
                     $user->premium_until = now()->addMonths($months);
@@ -221,29 +227,15 @@ class PaymentController extends Controller
                         'paid_at' => now(),
                     ]);
 
-                    return response()->json([
-                        'success' => true,
-                        'is_premium' => true,
-                        'message' => 'Premium activated'
-                    ]);
+                    session()->forget('last_payment_id');
+
+                    return response()->json(['success' => true, 'is_premium' => true]);
                 }
-
-                return response()->json([
-                    'success' => false,
-                    'is_premium' => false,
-                    'status' => $status,
-                    'message' => 'Payment not completed yet'
-                ]);
-
             } catch (\Exception $e) {
-                Log::error('Check payment status error: ' . $e->getMessage());
+                Log::error('API error: ' . $e->getMessage());
             }
         }
 
-        return response()->json([
-            'success' => false,
-            'is_premium' => false,
-            'message' => 'Cannot check payment status'
-        ]);
+        return response()->json(['success' => false, 'is_premium' => false]);
     }
 }
