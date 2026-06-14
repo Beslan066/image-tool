@@ -60,6 +60,12 @@ class PaymentController extends Controller
             return redirect($redirectUrl)->with('success', 'Premium подписка активирована!');
         }
 
+        // Проверка наличия сервиса ЮKassa
+        if (!$this->yookassa) {
+            Log::error('YooKassa service not initialized');
+            return back()->with('error', 'Платежная система временно недоступна. Попробуйте позже.');
+        }
+
         // Для production - реальная оплата через ЮKassa
         try {
             $returnUrl = $request->input('redirect', route('payment.success'));
@@ -78,7 +84,7 @@ class PaymentController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Payment creation error: ' . $e->getMessage());
-            return back()->with('error', 'Ошибка при создании платежа. Попробуйте позже.');
+            return back()->with('error', 'Ошибка при создании платежа: ' . $e->getMessage());
         }
     }
 
@@ -100,6 +106,11 @@ class PaymentController extends Controller
 
         if (app()->environment('local')) {
             return response()->json(['ok' => true]);
+        }
+
+        if (!$this->yookassa) {
+            Log::error('YooKassa service not initialized for webhook');
+            return response()->json(['error' => 'Service unavailable'], 500);
         }
 
         try {
