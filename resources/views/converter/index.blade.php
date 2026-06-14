@@ -574,7 +574,14 @@
                             <li class="flex items-center gap-2">✅ AI улучшение качества</li>
                             <li class="flex items-center gap-2">✅ Экспорт в PDF</li>
                         </ul>
-                        <button @click="upgradeToPremium" class="w-full mt-4 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white py-2 rounded-lg font-semibold transition">⭐ Активировать Premium</button>
+                        <form action="{{ route('checkout') }}" method="POST" class="w-full mt-4">
+                            @csrf
+                            <input type="hidden" name="plan" value="premium">
+                            <input type="hidden" name="redirect" value="{{ url()->current() }}">
+                            <button type="submit" class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white py-2 rounded-lg font-semibold transition">
+                                ⭐ Активировать Premium
+                            </button>
+                        </form>
                     </div>
                 </div>
                 <p class="text-xs text-gray-500 mt-4 text-center">Оплата через ЮKassa (банковская карта, СБП). Подписка автоматически продлевается.</p>
@@ -683,12 +690,6 @@
                     document.documentElement.classList.remove('dark');
                     document.body.classList.remove('dark');
                 }
-            },
-
-            upgradeToPremium() {
-                const plan = 'premium'; // или 'monthly' / 'yearly'
-                const redirectUrl = encodeURIComponent(window.location.href);
-                window.location.href = `/checkout?plan=${plan}&redirect=${redirectUrl}`;
             },
 
             setBatchMode(mode) {
