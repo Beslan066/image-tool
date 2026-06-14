@@ -4,29 +4,58 @@ namespace App\Services;
 
 use YooKassa\Client;
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
 
 class YooKassaService
 {
     protected $client;
+    protected $isAvailable;
 
     public function __construct()
     {
-        $this->client = new Client();
-        $this->client->setAuth(
-            config('services.yookassa.shop_id'),
-            config('services.yookassa.secret_key')
-        );
+        $this->isAvailable = false;
+
+        try {
+            $shopId = config('services.yookassa.shop_id');
+            $secretKey = config('services.yookassa.secret_key');
+
+            Log::info('YooKassa init', [
+                'shop_id' => $shopId ? 'set' : 'empty',
+                'secret_key' => $secretKey ? 'set' : 'empty'
+            ]);
+
+            if ($shopId && $secretKey) {
+                $this->client = new Client();
+                $this->client->setAuth($shopId, $secretKey);
+                $this->isAvailable = true;
+                Log::info('YooKassa initialized successfully');
+            } else {
+                Log::warning('YooKassa not configured: missing credentials');
+            }
+        } catch (\Exception $e) {
+            Log::error('YooKassa initialization error: ' . $e->getMessage());
+        }
+    }
+
+    public function isAvailable()
+    {
+        return $this->isAvailable;
     }
 
     public function createPayment(User $user, string $plan, string $returnUrl)
     {
+        if (!$this->isAvailable) {
+            throw new \Exception('YooKassa service not available');
+        }
+
         $prices = [
             'monthly' => 299,
             'yearly' => 1990,
+            'premium' => 299,
         ];
 
         $amount = $prices[$plan];
-        $description = "Premium подписка - " . ($plan === 'monthly' ? '1 месяц' : '1 год');
+        $description = "Premium подписка - " . ($plan === 'yearly' ? '1 год' : '1 месяц');
 
         $payment = $this->client->createPayment([
             'amount' => [
@@ -50,11 +79,6 @@ class YooKassaService
             'payment_id' => $payment->getId(),
             'confirmation_url' => $payment->getConfirmation()->getConfirmationUrl(),
         ];
-    }
-
-    public function getPaymentInfo($paymentId)
-    {
-        return $this->client->getPaymentInfo($paymentId);
     }
 
     public function handleWebhook($payload)

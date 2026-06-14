@@ -20,6 +20,14 @@ class PaymentController extends Controller
 
     public function checkout(Request $request)
     {
+
+        Log::info('=== CHECKOUT DEBUG ===', [
+            'yookassa_exists' => $this->yookassa ? 'yes' : 'no',
+            'shop_id' => config('services.yookassa.shop_id'),
+            'secret_key_set' => config('services.yookassa.secret_key') ? 'yes' : 'no'
+        ]);
+
+
         $request->validate([
             'plan' => 'required|in:monthly,yearly,premium',
             'redirect' => 'nullable|url'
