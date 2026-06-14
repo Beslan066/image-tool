@@ -40,27 +40,8 @@ class PaymentController extends Controller
         $plan = $plans[$request->plan];
         $amount = $plan['price'];
 
-        // Для локальной разработки - имитируем успешную оплату
-        if (app()->environment('local')) {
-            // Активируем премиум сразу
-            $user->activatePremium($plan['months']);
-
-            // Сохраняем запись о подписке
-            Subscription::create([
-                'user_id' => $user->id,
-                'payment_id' => 'local_' . uniqid(),
-                'plan' => $request->plan,
-                'amount' => $amount,
-                'status' => 'paid',
-                'paid_at' => now(),
-                'expires_at' => now()->addMonths($plan['months']),
-            ]);
-
-            $redirectUrl = $request->input('redirect', route('converter'));
-            return redirect($redirectUrl)->with('success', 'Premium подписка активирована!');
-        }
-
-        // Проверка наличия сервиса ЮKassa
+        // Убираем старую логику с app()->environment('local')
+        // Вместо этого, просто проверяем, что сервис ЮKassa инициализирован.
         if (!$this->yookassa) {
             Log::error('YooKassa service not initialized');
             return back()->with('error', 'Платежная система временно недоступна. Попробуйте позже.');
@@ -69,8 +50,11 @@ class PaymentController extends Controller
         // Для production - реальная оплата через ЮKassa
         try {
             $returnUrl = $request->input('redirect', route('payment.success'));
+
+            // 1. Создаем платеж в ЮKassa через наш сервис
             $payment = $this->yookassa->createPayment($user, $request->plan, $returnUrl);
 
+            // 2. Сохраняем информацию о pending-платеже в БД
             Subscription::create([
                 'user_id' => $user->id,
                 'payment_id' => $payment['payment_id'],
@@ -80,6 +64,8 @@ class PaymentController extends Controller
                 'expires_at' => now()->addHour(),
             ]);
 
+            // 3. Перенаправляем пользователя на платежную страницу ЮKassa
+            //    (где он сможет ввести тестовую карту 5555 5555 5555 4477 [citation:5][citation:9])
             return redirect($payment['confirmation_url']);
 
         } catch (\Exception $e) {
