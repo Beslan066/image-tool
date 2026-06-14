@@ -708,13 +708,29 @@
                 // Немедленная проверка
                 this.checkPaymentStatus();
 
-                // Периодическая проверка каждые 5 секунд
+                // Периодическая проверка каждые 5 секунд (только если нет премиума)
                 this.checkPaymentInterval = setInterval(() => {
-                    this.checkPaymentStatus();
+                    // Проверяем только если премиум еще не активен
+                    if (!this.isPremium) {
+                        this.checkPaymentStatus();
+                    } else {
+                        // Если премиум уже активен, останавливаем проверку
+                        clearInterval(this.checkPaymentInterval);
+                        this.checkPaymentInterval = null;
+                    }
                 }, 5000);
             },
 
             async checkPaymentStatus() {
+                // Не проверяем, если уже есть премиум
+                if (this.isPremium) {
+                    if (this.checkPaymentInterval) {
+                        clearInterval(this.checkPaymentInterval);
+                        this.checkPaymentInterval = null;
+                    }
+                    return;
+                }
+
                 try {
                     const response = await fetch('/check-payment-status', {
                         headers: {
@@ -726,19 +742,20 @@
 
                     console.log('Payment status check:', data);
 
-                    if (data.is_premium) {
+                    if (data.is_premium && !this.isPremium) {
+                        // Останавливаем интервал перед перезагрузкой
                         if (this.checkPaymentInterval) {
                             clearInterval(this.checkPaymentInterval);
                             this.checkPaymentInterval = null;
                         }
                         this.isPremium = true;
-                        setTimeout(() => location.reload(), 500);
+                        // Перезагружаем страницу один раз
+                        location.reload();
                     }
                 } catch (error) {
                     console.error('Check payment status error:', error);
                 }
             },
-
             setBatchMode(mode) {
                 this.batchMode = mode;
                 if (!mode) this.clearBatchFiles();
