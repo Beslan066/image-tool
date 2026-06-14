@@ -609,6 +609,7 @@
             autoUpdate: false,
             applyTimeout: null,
             isDarkMode: false,
+            checkPaymentInterval: null,
 
             // Премиум
             isPremium: false,
@@ -675,6 +676,11 @@
                     const response = await fetch('/converter/check-premium');
                     const data = await response.json();
                     this.isPremium = data.is_premium || false;
+
+                    if (this.isPremium && this.checkPaymentInterval) {
+                        clearInterval(this.checkPaymentInterval);
+                        this.checkPaymentInterval = null;
+                    }
                 } catch (error) {
                     this.isPremium = false;
                 }
@@ -690,6 +696,65 @@
                     document.documentElement.classList.remove('dark');
                     document.body.classList.remove('dark');
                 }
+            },
+
+            upgradeToPremium() {
+                // Создаем форму для POST запроса
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '/checkout';
+                form.style.display = 'none';
+
+                const csrfInput = document.createElement('input');
+                csrfInput.type = 'hidden';
+                csrfInput.name = '_token';
+                csrfInput.value = document.querySelector('meta[name="csrf-token"]').content;
+                form.appendChild(csrfInput);
+
+                const planInput = document.createElement('input');
+                planInput.type = 'hidden';
+                planInput.name = 'plan';
+                planInput.value = 'premium';
+                form.appendChild(planInput);
+
+                const redirectInput = document.createElement('input');
+                redirectInput.type = 'hidden';
+                redirectInput.name = 'redirect';
+                redirectInput.value = window.location.href;
+                form.appendChild(redirectInput);
+
+                document.body.appendChild(form);
+                form.submit();
+
+                // Запускаем проверку статуса платежа
+                this.startPaymentCheck();
+            },
+
+            startPaymentCheck() {
+                if (this.checkPaymentInterval) {
+                    clearInterval(this.checkPaymentInterval);
+                }
+
+                this.checkPaymentInterval = setInterval(async () => {
+                    try {
+                        const response = await fetch('/check-payment-status', {
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                                'Accept': 'application/json'
+                            }
+                        });
+                        const data = await response.json();
+
+                        if (data.is_premium) {
+                            clearInterval(this.checkPaymentInterval);
+                            this.checkPaymentInterval = null;
+                            this.isPremium = true;
+                            location.reload();
+                        }
+                    } catch (error) {
+                        console.error('Check payment status error:', error);
+                    }
+                }, 3000);
             },
 
             setBatchMode(mode) {

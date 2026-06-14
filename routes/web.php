@@ -47,6 +47,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/checkout', [PaymentController::class, 'checkout'])->name('checkout');
     Route::get('/payment/success', [PaymentController::class, 'success'])->name('payment.success');
     Route::get('/payment/cancel', [PaymentController::class, 'cancel'])->name('payment.cancel');
+    Route::get('/check-payment-status', [PaymentController::class, 'checkPaymentStatus']);
 });
 
 // Вебхук (без авторизации)
