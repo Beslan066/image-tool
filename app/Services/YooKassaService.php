@@ -82,14 +82,6 @@ class YooKassaService
         ];
     }
 
-    public function getPaymentInfo($paymentId)
-    {
-        if (!$this->isAvailable) {
-            throw new \Exception('YooKassa service not available');
-        }
-        return $this->client->getPaymentInfo($paymentId);
-    }
-
     public function handleWebhook($payload)
     {
         $event = $payload['event'] ?? null;
@@ -107,5 +99,13 @@ class YooKassaService
         }
 
         return ['success' => false];
+    }
+
+    public function getPaymentInfo($paymentId)
+    {
+        if (!$this->isAvailable) {
+            throw new \Exception('YooKassa service not available');
+        }
+        return $this->client->getPaymentInfo($paymentId);
     }
 }
