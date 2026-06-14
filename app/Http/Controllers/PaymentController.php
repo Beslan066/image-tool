@@ -85,7 +85,11 @@ class PaymentController extends Controller
 
     public function success(Request $request)
     {
-        Log::info('Payment success callback', ['request' => $request->all(), 'session' => session()->all()]);
+        Log::info('Payment success callback', [
+            'user_id' => $request->user()?->id,
+            'redirect' => $request->input('redirect'),
+            'all_params' => $request->all()
+        ]);
 
         $user = $request->user();
         $redirectUrl = $request->input('redirect', route('converter'));
@@ -95,49 +99,40 @@ class PaymentController extends Controller
             return redirect($redirectUrl)->with('error', 'Пользователь не авторизован');
         }
 
-        // Ищем последний pending платеж для этого пользователя
+        // Ищем последний PENDING платеж для этого пользователя
         $subscription = Subscription::where('user_id', $user->id)
             ->where('status', 'pending')
-            ->latest()
+            ->orderBy('id', 'desc')
             ->first();
 
         if ($subscription) {
-            Log::info('Found pending subscription', ['subscription_id' => $subscription->id, 'payment_id' => $subscription->payment_id]);
+            Log::info('Found pending subscription, activating manually', [
+                'subscription_id' => $subscription->id,
+                'payment_id' => $subscription->payment_id,
+                'plan' => $subscription->plan
+            ]);
 
-            // Проверяем статус платежа через API ЮKassa
-            if ($this->yookassa && $this->yookassa->isAvailable()) {
-                try {
-                    $paymentInfo = $this->yookassa->getPaymentInfo($subscription->payment_id);
-                    Log::info('Payment info from YooKassa', ['status' => $paymentInfo->getStatus()]);
-
-                    if ($paymentInfo->getStatus() === 'succeeded') {
-                        // Активируем подписку
-                        $subscription->update([
-                            'status' => 'paid',
-                            'paid_at' => now(),
-                        ]);
-
-                        $months = $subscription->plan === 'yearly' ? 12 : 1;
-                        $user->activatePremium($months);
-
-                        Log::info('Subscription activated via success callback', ['user_id' => $user->id]);
-                        return redirect($redirectUrl)->with('success', 'Premium подписка активирована!');
-                    }
-                } catch (\Exception $e) {
-                    Log::error('Error checking payment status: ' . $e->getMessage());
-                }
-            }
-
-            // Если не удалось проверить через API, активируем вручную (для тестов)
-            Log::info('Manual activation fallback');
+            // Активируем подписку
             $months = $subscription->plan === 'yearly' ? 12 : 1;
             $user->activatePremium($months);
+
+            // Обновляем статус платежа
             $subscription->update([
                 'status' => 'paid',
                 'paid_at' => now(),
             ]);
 
+            Log::info('Subscription activated via success callback', [
+                'user_id' => $user->id,
+                'premium_until' => $user->premium_until
+            ]);
+
             return redirect($redirectUrl)->with('success', 'Premium подписка активирована!');
+        }
+
+        // Если нет pending платежа, проверяем, может уже активировано
+        if ($user->isPremiumActive()) {
+            return redirect($redirectUrl)->with('success', 'Premium подписка уже активна');
         }
 
         Log::warning('No pending subscription found for user', ['user_id' => $user->id]);

@@ -9,6 +9,24 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::middleware(['auth'])->get('/force-premium', function () {
+    $user = auth()->user();
+    $user->activatePremium(1);
+
+    // Создаем запись о подписке
+    \App\Models\Subscription::create([
+        'user_id' => $user->id,
+        'payment_id' => 'manual_' . uniqid(),
+        'plan' => 'premium',
+        'amount' => 299,
+        'status' => 'paid',
+        'paid_at' => now(),
+        'expires_at' => now()->addMonth(),
+    ]);
+
+    return redirect()->back()->with('success', 'Premium активирован принудительно');
+});
+
 Route::get('/dashboard', function () {
     return view('dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
