@@ -38,17 +38,17 @@ class User extends Authenticatable
 
     public function isPremiumActive(): bool
     {
-        // Проверяем, что premium_until - объект Carbon и будущая дата
-        if (!$this->is_premium) {
-            return false;
-        }
+        $active = $this->is_premium && ($this->premium_until === null || $this->premium_until->isFuture());
 
-        if ($this->premium_until === null) {
-            return true;
-        }
+        // Отладка
+        \Log::info('isPremiumActive check', [
+            'user_id' => $this->id,
+            'is_premium' => $this->is_premium,
+            'premium_until' => $this->premium_until,
+            'active' => $active
+        ]);
 
-        // Теперь premium_until будет Carbon объектом благодаря casts
-        return $this->premium_until->isFuture();
+        return $active;
     }
 
     public function activatePremium(int $months = 1): void

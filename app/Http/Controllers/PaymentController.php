@@ -85,58 +85,50 @@ class PaymentController extends Controller
 
     public function success(Request $request)
     {
-        Log::info('Payment success callback', [
-            'user_id' => $request->user()?->id,
-            'redirect' => $request->input('redirect'),
-            'all_params' => $request->all()
-        ]);
+        // Детальное логирование
+        Log::info('=== PAYMENT SUCCESS CALLBACK ===');
+        Log::info('User ID: ' . ($request->user()?->id));
+        Log::info('All request params: ', $request->all());
+        Log::info('Session data: ', session()->all());
 
         $user = $request->user();
         $redirectUrl = $request->input('redirect', route('converter'));
 
         if (!$user) {
-            Log::warning('Payment success: user not authenticated');
+            Log::error('No user authenticated in success callback');
             return redirect($redirectUrl)->with('error', 'Пользователь не авторизован');
         }
 
-        // Ищем последний PENDING платеж для этого пользователя
+        // Ищем платеж
         $subscription = Subscription::where('user_id', $user->id)
             ->where('status', 'pending')
             ->orderBy('id', 'desc')
             ->first();
 
+        Log::info('Found subscription: ' . ($subscription ? json_encode($subscription->toArray()) : 'null'));
+
         if ($subscription) {
-            Log::info('Found pending subscription, activating manually', [
-                'subscription_id' => $subscription->id,
-                'payment_id' => $subscription->payment_id,
-                'plan' => $subscription->plan
-            ]);
-
-            // Активируем подписку
+            // Принудительная активация
+            $user->is_premium = true;
             $months = $subscription->plan === 'yearly' ? 12 : 1;
-            $user->activatePremium($months);
+            $user->premium_until = now()->addMonths($months);
+            $user->save();
 
-            // Обновляем статус платежа
-            $subscription->update([
-                'status' => 'paid',
-                'paid_at' => now(),
-            ]);
+            $subscription->status = 'paid';
+            $subscription->paid_at = now();
+            $subscription->save();
 
-            Log::info('Subscription activated via success callback', [
+            Log::info('Premium activated manually', [
                 'user_id' => $user->id,
+                'is_premium' => $user->is_premium,
                 'premium_until' => $user->premium_until
             ]);
 
             return redirect($redirectUrl)->with('success', 'Premium подписка активирована!');
         }
 
-        // Если нет pending платежа, проверяем, может уже активировано
-        if ($user->isPremiumActive()) {
-            return redirect($redirectUrl)->with('success', 'Premium подписка уже активна');
-        }
-
-        Log::warning('No pending subscription found for user', ['user_id' => $user->id]);
-        return redirect($redirectUrl)->with('error', 'Не удалось активировать подписку. Обратитесь в поддержку.');
+        Log::warning('No pending subscription found for user ' . $user->id);
+        return redirect($redirectUrl)->with('error', 'Не удалось активировать подписку');
     }
 
     public function cancel(Request $request)
