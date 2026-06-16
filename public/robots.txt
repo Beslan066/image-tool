@@ -1,2 +1,9 @@
+# public/robots.txt
 User-agent: *
-Disallow:
+Allow: /
+Disallow: /checkout
+Disallow: /payment/
+Disallow: /yookassa/
+Disallow: /force-premium
+
+Sitemap: https://api.desharing.ru/sitemap.xml

@@ -395,4 +395,9 @@ class ImageConverterController extends Controller
             throw new \Exception('Некорректное изображение');
         }
     }
+
+    public function privacyPolicy()
+    {
+        return view('privacy-policy');
+    }
 }

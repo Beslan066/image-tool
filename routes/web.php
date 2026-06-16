@@ -5,9 +5,6 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
-});
 
 Route::middleware(['auth'])->get('/force-premium', function () {
     $user = auth()->user();
@@ -38,9 +35,10 @@ Route::middleware('auth')->group(function () {
 });
 
 // Публичные маршруты (без регистрации)
-Route::get('/converter', [ImageConverterController::class, 'index'])->name('converter');
+Route::get('/', [ImageConverterController::class, 'index'])->name('converter');
 Route::post('/converter/process', [ImageConverterController::class, 'process'])->name('converter.process');
 Route::get('/converter/check-premium', [ImageConverterController::class, 'checkPremium'])->name('converter.check-premium');
+Route::get('/privacy-policy', [ImageConverterController::class, 'privacyPolicy'])->name('privacyPolicy');
 
 // Маршруты с авторизацией
 Route::middleware(['auth'])->group(function () {
@@ -81,5 +79,15 @@ Route::middleware(['auth'])->group(function () {
 
 // Вебхук (без авторизации)
 Route::post('/yookassa/webhook', [PaymentController::class, 'webhook'])->name('yookassa.webhook');
+
+// Sitemap
+Route::get('/sitemap.xml', function () {
+    return response()->view('sitemap')->header('Content-Type', 'text/xml');
+});
+
+// Robots.txt
+Route::get('/robots.txt', function () {
+    return response()->file(public_path('robots.txt'));
+});
 
 require __DIR__.'/auth.php';
